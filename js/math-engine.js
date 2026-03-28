@@ -264,6 +264,22 @@ window.MathVisualizer = window.MathVisualizer || {};
     return roots;
   }
 
+
+  function createEvaluator(expression) {
+    const compiledFunction = compileExpression(expression);
+    const derivativeExpression = deriveExpression(expression);
+    const compiledDerivative = compileExpression(derivativeExpression);
+
+    return {
+      functionAt(x) {
+        return evaluateCompiled(compiledFunction, x);
+      },
+      derivativeAt(x) {
+        return evaluateCompiled(compiledDerivative, x);
+      }
+    };
+  }
+
   function runMathPipeline(state) {
     const { xMin, xMax } = state.viewport;
     const sampleCount = resolveSampleCount(state);
@@ -300,6 +316,7 @@ window.MathVisualizer = window.MathVisualizer || {};
   }
 
   window.MathVisualizer.mathEngine = {
-    runMathPipeline
+    runMathPipeline,
+    createEvaluator
   };
 })();

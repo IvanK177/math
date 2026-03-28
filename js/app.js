@@ -1,8 +1,8 @@
 window.MathVisualizer = window.MathVisualizer || {};
 
 (() => {
-  const { runMathPipeline } = window.MathVisualizer.mathEngine;
-  const { renderPlot, bindViewportEvents } = window.MathVisualizer.plotManager;
+  const { runMathPipeline, createEvaluator } = window.MathVisualizer.mathEngine;
+  const { renderPlot, bindViewportEvents, bindDualModeAnimation } = window.MathVisualizer.plotManager;
   const { createInitialState, updateMode, updateViewport, validateState } = window.MathVisualizer.state;
   const { getElements, renderActiveMode, renderMetrics, setChartStatus } = window.MathVisualizer.ui;
 
@@ -16,14 +16,28 @@ window.MathVisualizer = window.MathVisualizer || {};
   function initApp() {
     const elements = getElements();
     let state = createInitialState();
+    let runtime = {
+      state,
+      datasets: null,
+      evaluator: createEvaluator(state.expression)
+    };
     let viewportBound = false;
+    let dualModeBound = false;
     let viewportTimer = null;
 
     function executePipeline(statusText = 'График обновлён') {
       const validState = validateState(state);
       state = validState;
+      runtime = {
+        state: validState,
+        datasets: runtime.datasets,
+        evaluator: createEvaluator(validState.expression)
+      };
+
       setChartStatus(elements, 'Обновляю сцену…', true);
       const datasets = runMathPipeline(validState);
+      runtime.datasets = datasets;
+
       renderActiveMode(elements, validState.mode);
       renderMetrics(elements, validState, datasets);
 
@@ -44,6 +58,11 @@ window.MathVisualizer = window.MathVisualizer || {};
               }, 120);
             });
             viewportBound = true;
+          }
+
+          if (!dualModeBound) {
+            bindDualModeAnimation(elements.graph, () => runtime);
+            dualModeBound = true;
           }
         })
         .catch(() => {
