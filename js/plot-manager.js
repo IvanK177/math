@@ -224,17 +224,17 @@ window.MathVisualizer = window.MathVisualizer || {};
     };
   }
 
-  function createExtremaTrace(datasets) {
-    if (datasets.extrema.length === 0) {
+  function createExtremaTrace(points, label = 'Экстремум') {
+    if (!Array.isArray(points) || points.length === 0) {
       return null;
     }
 
     return createMarkerTrace({
-      x: datasets.extrema.map((point) => point.x),
-      y: datasets.extrema.map((point) => point.y),
+      x: points.map((point) => point.x),
+      y: points.map((point) => point.y),
       color: PLOT_COLORS.extrema,
-      name: 'Экстремумы',
-      hovertemplate: 'Экстремум<br>x=%{x:.2f}<br>y=%{y:.2f}<extra></extra>',
+      name: `${label}`,
+      hovertemplate: `${label}<br>x=%{x:.2f}<br>y=%{y:.2f}<extra></extra>`,
       size: 10
     });
   }
@@ -268,6 +268,21 @@ window.MathVisualizer = window.MathVisualizer || {};
           dash: 'dash'
         },
         hovertemplate: 'f′(x)=%{y:.2f}<extra></extra>'
+      },
+      {
+        type: 'scatter',
+        mode: 'text',
+        x: [null],
+        y: [null],
+        text: [''],
+        textposition: 'top left',
+        textfont: {
+          color: '#fde68a',
+          size: 13
+        },
+        name: 'tan(α)',
+        showlegend: false,
+        hoverinfo: 'skip'
       }
     ];
   }
@@ -295,9 +310,29 @@ window.MathVisualizer = window.MathVisualizer || {};
       size: 8
     })];
 
-    const extremaTrace = createExtremaTrace(datasets);
-    if (extremaTrace && (state.mode === 'function' || state.mode === 'combo')) {
-      extras.push(extremaTrace);
+    if (state.mode === 'combo') {
+      const comboExtrema = [
+        createExtremaTrace(datasets.extrema.function, 'Экстремум f(x)'),
+        createExtremaTrace(datasets.extrema.derivative, 'Экстремум f′(x)'),
+        createExtremaTrace(datasets.extrema.integral, 'Экстремум F(x)')
+      ].filter(Boolean);
+      extras.push(...comboExtrema);
+    } else if (state.mode === 'dual') {
+      const dualExtrema = [
+        createExtremaTrace(datasets.extrema.function, 'Экстремум f(x)'),
+        createExtremaTrace(datasets.extrema.derivative, 'Экстремум f′(x)')
+      ].filter(Boolean);
+      extras.push(...dualExtrema);
+    } else {
+      const extremaByMode = {
+        function: datasets.extrema.function,
+        derivative: datasets.extrema.derivative,
+        integral: datasets.extrema.integral
+      };
+      const extremaTrace = createExtremaTrace(extremaByMode[state.mode], 'Экстремум');
+      if (extremaTrace) {
+        extras.push(extremaTrace);
+      }
     }
 
     if (state.mode === 'dual') {
@@ -366,7 +401,8 @@ window.MathVisualizer = window.MathVisualizer || {};
       const { xMin, xMax } = runtime.state.viewport;
       const pointTraceIndex = graphElement.data.findIndex((trace) => trace.name === 'Точка f(x)');
       const tangentTraceIndex = graphElement.data.findIndex((trace) => trace.name === 'f′(x) (текущее)');
-      if (pointTraceIndex < 0 || tangentTraceIndex < 0) {
+      const tangentTextIndex = graphElement.data.findIndex((trace) => trace.name === 'tan(α)');
+      if (pointTraceIndex < 0 || tangentTraceIndex < 0 || tangentTextIndex < 0) {
         return;
       }
 
@@ -379,6 +415,12 @@ window.MathVisualizer = window.MathVisualizer || {};
         x: [[xMin, xMax]],
         y: [[derivativeY, derivativeY]]
       }, [tangentTraceIndex]);
+
+      window.Plotly.restyle(graphElement, {
+        x: [[xMax]],
+        y: [[derivativeY]],
+        text: [[`tg(α) = ${derivativeY.toFixed(3)}`]]
+      }, [tangentTextIndex]);
     };
 
     const unhoverHandler = () => {
@@ -389,7 +431,8 @@ window.MathVisualizer = window.MathVisualizer || {};
 
       const pointTraceIndex = graphElement.data.findIndex((trace) => trace.name === 'Точка f(x)');
       const tangentTraceIndex = graphElement.data.findIndex((trace) => trace.name === 'f′(x) (текущее)');
-      if (pointTraceIndex < 0 || tangentTraceIndex < 0) {
+      const tangentTextIndex = graphElement.data.findIndex((trace) => trace.name === 'tan(α)');
+      if (pointTraceIndex < 0 || tangentTraceIndex < 0 || tangentTextIndex < 0) {
         return;
       }
 
@@ -402,6 +445,12 @@ window.MathVisualizer = window.MathVisualizer || {};
         x: [[null, null]],
         y: [[null, null]]
       }, [tangentTraceIndex]);
+
+      window.Plotly.restyle(graphElement, {
+        x: [[null]],
+        y: [[null]],
+        text: [['']]
+      }, [tangentTextIndex]);
     };
 
     graphElement.on('plotly_hover', hoverHandler);
