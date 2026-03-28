@@ -207,6 +207,41 @@ window.MathVisualizer = window.MathVisualizer || {};
     return extrema;
   }
 
+  function findSeriesExtrema(xValues, values) {
+    const extrema = [];
+
+    for (let index = 1; index < values.length - 1; index += 1) {
+      const leftValue = values[index - 1];
+      const currentValue = values[index];
+      const rightValue = values[index + 1];
+
+      if (!isFiniteNumber(leftValue) || !isFiniteNumber(currentValue) || !isFiniteNumber(rightValue)) {
+        continue;
+      }
+
+      const risesToCurrent = currentValue > leftValue;
+      const fallsAfterCurrent = currentValue > rightValue;
+      const fallsToCurrent = currentValue < leftValue;
+      const risesAfterCurrent = currentValue < rightValue;
+      const isExtremum = (risesToCurrent && fallsAfterCurrent) || (fallsToCurrent && risesAfterCurrent);
+
+      if (!isExtremum) {
+        continue;
+      }
+
+      const x = xValues[index];
+      const y = currentValue;
+      const lastPoint = extrema[extrema.length - 1];
+      if (lastPoint && Math.abs(lastPoint.x - x) < 1e-4) {
+        continue;
+      }
+
+      extrema.push({ x, y });
+    }
+
+    return extrema;
+  }
+
   function computeSeriesStats(xValues, values) {
     const visibleValues = values.filter(isFiniteNumber);
     if (visibleValues.length === 0) {
@@ -290,7 +325,9 @@ window.MathVisualizer = window.MathVisualizer || {};
     const compiledDerivative = compileExpression(derivativeExpression);
     const derivativeValues = evaluateSeries(compiledDerivative, xValues);
     const integralValues = computeIntegralSeries(xValues, functionValues);
-    const extrema = findExtrema(xValues, derivativeValues, compiledFunction, compiledDerivative);
+    const extremaFunction = findExtrema(xValues, derivativeValues, compiledFunction, compiledDerivative);
+    const extremaDerivative = findSeriesExtrema(xValues, derivativeValues);
+    const extremaIntegral = findSeriesExtrema(xValues, integralValues);
 
     return {
       xValues,
@@ -311,7 +348,11 @@ window.MathVisualizer = window.MathVisualizer || {};
         derivative: findZeroCrossings(xValues, derivativeValues),
         integral: findZeroCrossings(xValues, integralValues)
       },
-      extrema
+      extrema: {
+        function: extremaFunction,
+        derivative: extremaDerivative,
+        integral: extremaIntegral
+      }
     };
   }
 
