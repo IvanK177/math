@@ -17,12 +17,14 @@ window.MathVisualizer.config = {
     function: 'Функция',
     derivative: 'Производная',
     integral: 'Первообразная',
+    dual: '2 в 1',
     combo: '3 в 1'
   },
   MODE_FORMULAS: {
     function: 'f(x) = x³ − 2x² + x + 1',
     derivative: 'f′(x) = 3x² − 4x + 1',
     integral: 'F(x) = x⁴/4 − 2x³/3 + x²/2 + x',
+    dual: 'f(x), f′(x)',
     combo: 'f(x), f′(x), F(x)'
   },
   PLOT_COLORS: {

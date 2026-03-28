@@ -4,7 +4,7 @@ window.MathVisualizer = window.MathVisualizer || {};
   const { PLOT_COLORS, MODE_LABELS } = window.MathVisualizer.config;
   const { isFiniteNumber } = window.MathVisualizer.utils;
 
-  function createLineTrace({ color, hoverLabel, name, showLegend, x, y }) {
+  function createLineTrace({ color, hoverLabel, name, showLegend, x, y, dash = 'solid' }) {
     return {
       type: 'scatter',
       mode: 'lines',
@@ -15,6 +15,7 @@ window.MathVisualizer = window.MathVisualizer || {};
       line: {
         color,
         width: 2.4,
+        dash,
         shape: 'linear'
       },
       hovertemplate: `${hoverLabel}<br>x=%{x:.2f}<br>y=%{y:.2f}<extra></extra>`
@@ -48,6 +49,13 @@ window.MathVisualizer = window.MathVisualizer || {};
         { name: 'Функция', hoverLabel: 'f(x)', color: PLOT_COLORS.function, values: datasets.series.function },
         { name: 'Производная', hoverLabel: 'f′(x)', color: PLOT_COLORS.derivative, values: datasets.series.derivative },
         { name: 'Первообразная', hoverLabel: 'F(x)', color: PLOT_COLORS.integral, values: datasets.series.integral }
+      ];
+    }
+
+    if (mode === 'dual') {
+      return [
+        { name: 'Функция', hoverLabel: 'f(x)', color: PLOT_COLORS.function, values: datasets.series.function },
+        { name: 'Производная', hoverLabel: 'f′(x)', color: PLOT_COLORS.derivative, values: datasets.series.derivative }
       ];
     }
 
@@ -86,6 +94,10 @@ window.MathVisualizer = window.MathVisualizer || {};
   function gatherRangeValues(mode, datasets) {
     if (mode === 'combo') {
       return [...datasets.series.function, ...datasets.series.derivative, ...datasets.series.integral].filter(isFiniteNumber);
+    }
+
+    if (mode === 'dual') {
+      return [...datasets.series.function, ...datasets.series.derivative].filter(isFiniteNumber);
     }
 
     return datasets.series[mode].filter(isFiniteNumber);
@@ -136,7 +148,7 @@ window.MathVisualizer = window.MathVisualizer || {};
   function buildLayout(state) {
     const xSpan = state.viewport.xMax - state.viewport.xMin;
     const ySpan = state.viewport.yMax - state.viewport.yMin;
-    const isCombo = state.mode === 'combo';
+    const isCombo = state.mode === 'combo' || state.mode === 'dual';
 
     return {
       paper_bgcolor: 'rgba(0,0,0,0)',
@@ -227,6 +239,39 @@ window.MathVisualizer = window.MathVisualizer || {};
     });
   }
 
+  function createDualAnimationTraces() {
+    return [
+      {
+        type: 'scatter',
+        mode: 'markers',
+        x: [null],
+        y: [null],
+        name: 'Точка f(x)',
+        showlegend: false,
+        marker: {
+          size: 11,
+          color: '#facc15',
+          line: { width: 1.6, color: '#081224' }
+        },
+        hovertemplate: 'f(x)<br>x=%{x:.2f}<br>y=%{y:.2f}<extra></extra>'
+      },
+      {
+        type: 'scatter',
+        mode: 'lines',
+        x: [null, null],
+        y: [null, null],
+        name: 'f′(x) (текущее)',
+        showlegend: false,
+        line: {
+          color: '#f97316',
+          width: 2,
+          dash: 'dash'
+        },
+        hovertemplate: 'f′(x)=%{y:.2f}<extra></extra>'
+      }
+    ];
+  }
+
   function buildPlotModel(state, datasets) {
     const baseSeries = getBaseSeries(state.mode, datasets);
     const lineTraces = baseSeries.map((series) => {
@@ -235,7 +280,7 @@ window.MathVisualizer = window.MathVisualizer || {};
         color: series.color,
         hoverLabel: series.hoverLabel,
         name: series.name,
-        showLegend: state.mode === 'combo',
+        showLegend: state.mode === 'combo' || state.mode === 'dual',
         x: points.x,
         y: points.y
       });
@@ -253,6 +298,10 @@ window.MathVisualizer = window.MathVisualizer || {};
     const extremaTrace = createExtremaTrace(datasets);
     if (extremaTrace && (state.mode === 'function' || state.mode === 'combo')) {
       extras.push(extremaTrace);
+    }
+
+    if (state.mode === 'dual') {
+      extras.push(...createDualAnimationTraces());
     }
 
     return [...lineTraces, ...extras];
@@ -296,6 +345,69 @@ window.MathVisualizer = window.MathVisualizer || {};
     });
   }
 
+  function bindDualModeAnimation(graphElement, getRuntimeData) {
+    const hoverHandler = (eventData) => {
+      const runtime = getRuntimeData();
+      if (!runtime || runtime.state.mode !== 'dual' || !eventData.points || eventData.points.length === 0) {
+        return;
+      }
+
+      const x = eventData.points[0].x;
+      if (!isFiniteNumber(x)) {
+        return;
+      }
+
+      const functionY = runtime.evaluator.functionAt(x);
+      const derivativeY = runtime.evaluator.derivativeAt(x);
+      if (!isFiniteNumber(functionY) || !isFiniteNumber(derivativeY)) {
+        return;
+      }
+
+      const { xMin, xMax } = runtime.state.viewport;
+      const pointTraceIndex = graphElement.data.findIndex((trace) => trace.name === 'Точка f(x)');
+      const tangentTraceIndex = graphElement.data.findIndex((trace) => trace.name === 'f′(x) (текущее)');
+      if (pointTraceIndex < 0 || tangentTraceIndex < 0) {
+        return;
+      }
+
+      window.Plotly.restyle(graphElement, {
+        x: [[x]],
+        y: [[functionY]]
+      }, [pointTraceIndex]);
+
+      window.Plotly.restyle(graphElement, {
+        x: [[xMin, xMax]],
+        y: [[derivativeY, derivativeY]]
+      }, [tangentTraceIndex]);
+    };
+
+    const unhoverHandler = () => {
+      const runtime = getRuntimeData();
+      if (!runtime || runtime.state.mode !== 'dual') {
+        return;
+      }
+
+      const pointTraceIndex = graphElement.data.findIndex((trace) => trace.name === 'Точка f(x)');
+      const tangentTraceIndex = graphElement.data.findIndex((trace) => trace.name === 'f′(x) (текущее)');
+      if (pointTraceIndex < 0 || tangentTraceIndex < 0) {
+        return;
+      }
+
+      window.Plotly.restyle(graphElement, {
+        x: [[null]],
+        y: [[null]]
+      }, [pointTraceIndex]);
+
+      window.Plotly.restyle(graphElement, {
+        x: [[null, null]],
+        y: [[null, null]]
+      }, [tangentTraceIndex]);
+    };
+
+    graphElement.on('plotly_hover', hoverHandler);
+    graphElement.on('plotly_unhover', unhoverHandler);
+  }
+
   function recommendYRange(state, datasets) {
     return computeSmartYRange(state.mode, datasets);
   }
@@ -309,6 +421,7 @@ window.MathVisualizer = window.MathVisualizer || {};
   window.MathVisualizer.plotManager = {
     renderPlot,
     bindViewportEvents,
+    bindDualModeAnimation,
     recommendYRange,
     purgePlot
   };
