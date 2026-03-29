@@ -381,6 +381,90 @@ window.MathVisualizer = window.MathVisualizer || {};
   }
 
   function bindDualModeAnimation(graphElement, getRuntimeData) {
+    const animationState = {
+      frameId: null,
+      isActive: false,
+      currentX: null,
+      currentFunctionY: null,
+      currentDerivativeY: null,
+      targetX: null,
+      targetFunctionY: null,
+      targetDerivativeY: null
+    };
+
+    function stopAnimationLoop() {
+      if (animationState.frameId !== null) {
+        window.cancelAnimationFrame(animationState.frameId);
+        animationState.frameId = null;
+      }
+      animationState.isActive = false;
+    }
+
+    function startAnimationLoop() {
+      if (animationState.isActive) {
+        return;
+      }
+
+      animationState.isActive = true;
+
+      const animate = () => {
+        const runtime = getRuntimeData();
+        if (!runtime || runtime.state.mode !== 'dual') {
+          stopAnimationLoop();
+          return;
+        }
+
+        const pointTraceIndex = graphElement.data.findIndex((trace) => trace.name === 'Точка f(x)');
+        const tangentTraceIndex = graphElement.data.findIndex((trace) => trace.name === 'f′(x) (текущее)');
+        const tangentTextIndex = graphElement.data.findIndex((trace) => trace.name === 'tan(α)');
+        if (pointTraceIndex < 0 || tangentTraceIndex < 0 || tangentTextIndex < 0) {
+          stopAnimationLoop();
+          return;
+        }
+
+        const smoothing = 0.24;
+        const snapThreshold = 1e-3;
+
+        animationState.currentX += (animationState.targetX - animationState.currentX) * smoothing;
+        animationState.currentFunctionY += (animationState.targetFunctionY - animationState.currentFunctionY) * smoothing;
+        animationState.currentDerivativeY += (animationState.targetDerivativeY - animationState.currentDerivativeY) * smoothing;
+
+        const { xMin, xMax } = runtime.state.viewport;
+
+        window.Plotly.restyle(graphElement, {
+          x: [
+            [animationState.currentX],
+            [xMin, xMax],
+            [xMax]
+          ],
+          y: [
+            [animationState.currentFunctionY],
+            [animationState.currentDerivativeY, animationState.currentDerivativeY],
+            [animationState.currentDerivativeY]
+          ],
+          text: [
+            [`tg(α) = ${animationState.currentDerivativeY.toFixed(3)}`]
+          ]
+        }, [pointTraceIndex, tangentTraceIndex, tangentTextIndex]);
+
+        const reachedTarget = Math.abs(animationState.currentX - animationState.targetX) < snapThreshold
+          && Math.abs(animationState.currentFunctionY - animationState.targetFunctionY) < snapThreshold
+          && Math.abs(animationState.currentDerivativeY - animationState.targetDerivativeY) < snapThreshold;
+
+        if (reachedTarget) {
+          animationState.currentX = animationState.targetX;
+          animationState.currentFunctionY = animationState.targetFunctionY;
+          animationState.currentDerivativeY = animationState.targetDerivativeY;
+          stopAnimationLoop();
+          return;
+        }
+
+        animationState.frameId = window.requestAnimationFrame(animate);
+      };
+
+      animationState.frameId = window.requestAnimationFrame(animate);
+    }
+
     const hoverHandler = (eventData) => {
       const runtime = getRuntimeData();
       if (!runtime || runtime.state.mode !== 'dual' || !eventData.points || eventData.points.length === 0) {
@@ -406,21 +490,37 @@ window.MathVisualizer = window.MathVisualizer || {};
         return;
       }
 
-      window.Plotly.restyle(graphElement, {
-        x: [[x]],
-        y: [[functionY]]
-      }, [pointTraceIndex]);
+      const hasCurrentState = isFiniteNumber(animationState.currentX)
+        && isFiniteNumber(animationState.currentFunctionY)
+        && isFiniteNumber(animationState.currentDerivativeY);
+
+      if (!hasCurrentState) {
+        animationState.currentX = x;
+        animationState.currentFunctionY = functionY;
+        animationState.currentDerivativeY = derivativeY;
+      }
+
+      animationState.targetX = x;
+      animationState.targetFunctionY = functionY;
+      animationState.targetDerivativeY = derivativeY;
 
       window.Plotly.restyle(graphElement, {
-        x: [[xMin, xMax]],
-        y: [[derivativeY, derivativeY]]
-      }, [tangentTraceIndex]);
+        x: [
+          [animationState.currentX],
+          [xMin, xMax],
+          [xMax]
+        ],
+        y: [
+          [animationState.currentFunctionY],
+          [animationState.currentDerivativeY, animationState.currentDerivativeY],
+          [animationState.currentDerivativeY]
+        ],
+        text: [
+          [`tg(α) = ${animationState.currentDerivativeY.toFixed(3)}`]
+        ]
+      }, [pointTraceIndex, tangentTraceIndex, tangentTextIndex]);
 
-      window.Plotly.restyle(graphElement, {
-        x: [[xMax]],
-        y: [[derivativeY]],
-        text: [[`tg(α) = ${derivativeY.toFixed(3)}`]]
-      }, [tangentTextIndex]);
+      startAnimationLoop();
     };
 
     const unhoverHandler = () => {
@@ -428,6 +528,14 @@ window.MathVisualizer = window.MathVisualizer || {};
       if (!runtime || runtime.state.mode !== 'dual') {
         return;
       }
+
+      stopAnimationLoop();
+      animationState.currentX = null;
+      animationState.currentFunctionY = null;
+      animationState.currentDerivativeY = null;
+      animationState.targetX = null;
+      animationState.targetFunctionY = null;
+      animationState.targetDerivativeY = null;
 
       const pointTraceIndex = graphElement.data.findIndex((trace) => trace.name === 'Точка f(x)');
       const tangentTraceIndex = graphElement.data.findIndex((trace) => trace.name === 'f′(x) (текущее)');
